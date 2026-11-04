@@ -3,6 +3,8 @@
 > 批量下载微信公众号文章正文配图，自动替换为**原始分辨率**。
 > 一个轻量的 Windows 桌面小工具，也可作为命令行脚本使用。
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 ![界面](assets/screenshot.png)
 
 ## 为什么需要它
@@ -127,3 +129,7 @@ assets/                # 图标与截图
 
 本工具仅用于个人学习、备份已公开的公众号文章配图。
 图片版权归原作者及原公众号所有，请勿用于二次传播或商业用途。
+
+## 许可证
+
+本项目基于 [MIT License](LICENSE) 开源，可自由使用、修改和分发，请保留版权声明。
