@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.spec
+build/
+dist/
+dist_*/
+vendor/
+.pipcache/
+.pyi_cache/
+*.log
+
+# 本地产物
+公众号原图/
+test_*/
+*.exe
+*.zip
