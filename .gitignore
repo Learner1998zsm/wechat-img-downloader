@@ -9,8 +9,6 @@ vendor/
 .pyi_cache/
 *.log
 
-# 本地产物
+# 本地测试产物
 公众号原图/
 test_*/
-*.exe
-*.zip
