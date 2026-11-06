@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover
     requests = None  # type: ignore
 
 APP_NAME = "公众号原图下载器"
-APP_VERSION = "1.0"
+APP_VERSION = "1.1"
 CHINA_TZ = timezone(timedelta(hours=8))
 
 UA = (
@@ -358,12 +358,64 @@ def _extract_date(text: str) -> str:
                     return datetime.fromtimestamp(ts, CHINA_TZ).strftime("%Y-%m-%d")
             except (ValueError, OSError):
                 pass
+    match = re.search(r"(?:ori_create_time|create_time)\s*:\s*['\"]?(\d{9,11})", text)
+    if match:
+        try:
+            ts = int(match.group(1))
+            if 1262304000 < ts < 4102444800:
+                return datetime.fromtimestamp(ts, CHINA_TZ).strftime("%Y-%m-%d")
+        except (ValueError, OSError):
+            pass
+    match = re.search(r"create_time\s*:\s*['\"](\d{4}-\d{2}-\d{2})", text)
+    if match:
+        return match.group(1)
     match = re.search(r'id=["\']publish_time["\'][^>]*>([^<]{4,30})<', text)
     if match:
         value = html_lib.unescape(match.group(1)).strip()
         if value:
             return value[:10]
     return ""
+
+
+def _balanced_block(text: str, start: int) -> str:
+    """从 start 位置的 [ 或 { 开始，截取配对的完整代码块。"""
+    depth = 0
+    quote = ""
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+        else:
+            if ch in "'\"":
+                quote = ch
+            elif ch in "[{":
+                depth += 1
+            elif ch in "]}":
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        i += 1
+    return ""
+
+
+def extract_picture_page_images(html_text: str) -> list[str]:
+    """图片分享页（图集 / 轮播图）的图片存放在 picture_page_info_list 里。"""
+    found: list[str] = []
+    for key in ("picture_page_info_list", "picture_page_info"):
+        match = re.search(rf"{re.escape(key)}\s*:\s*[\[{{]", html_text)
+        if not match:
+            continue
+        block = _balanced_block(html_text, match.end() - 1)
+        if not block:
+            continue
+        for raw in re.findall(r"cdn_url\s*:\s*['\"]([^'\"]+)['\"]", block):
+            found.append(_js_unescape(raw))
+    return found
 
 
 def extract_images(html_text: str) -> list[str]:
@@ -387,16 +439,31 @@ def extract_images(html_text: str) -> list[str]:
 
     urls: list[str] = []
     seen: set[str] = set()
+
+    def add(raw: str) -> bool:
+        normalized = normalize_image_url(raw)
+        if not normalized:
+            return False
+        if normalized not in seen:
+            seen.add(normalized)
+            urls.append(normalized)
+        return True
+
+    # 图片分享页（图集/轮播）没有正文容器，只以图集列表为准，
+    # 避免把封面、二维码也当成正文图；普通文章的正文里也会带这份清单，
+    # 但内容与正文图片重复，不能直接使用。
+    gallery = extract_picture_page_images(html_text)
+    if gallery and not parser.found:
+        for raw in gallery:
+            add(raw)
+        return urls
+
     for tag in tags:
         for key in ("data-src", "data-original", "src"):
             raw = tag.get(key) or ""
             if not raw or raw.startswith("data:"):
                 continue
-            normalized = normalize_image_url(raw)
-            if normalized:
-                if normalized not in seen:
-                    seen.add(normalized)
-                    urls.append(normalized)
+            if add(raw):
                 break
     return urls
 
@@ -468,7 +535,7 @@ def fetch_article(url: str, cfg: "Config", stop: threading.Event) -> Article:
     response.encoding = "utf-8"
     text = response.text
 
-    if "js_content" not in text:
+    if "js_content" not in text and "picture_page_info" not in text:
         if any(marker in text for marker in VERIFY_MARKERS):
             raise ArticleError(
                 "触发微信环境验证：请用浏览器打开文章并「另存为」网页，"
